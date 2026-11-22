@@ -69,6 +69,8 @@ async function ipHash(request) {
   return [...new Uint8Array(d)].slice(0, 8).map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+// Curaçao is UTC-4 all year, no daylight saving.
+const curacaoToday = () => new Date(Date.now() - 4 * 3600 * 1000).toISOString().slice(0, 10);
 const cents = (x) => Math.round(Number(x) * 100);
 const xcg = (c) => Math.round(c) / 100;
 const clip = (s, n) => String(s == null ? '' : s).trim().slice(0, n);
@@ -84,9 +86,12 @@ function makeRef() {
 async function readMenu(env) {
   const rows = (await env.DB.prepare('SELECT * FROM menu ORDER BY position, rowid').all()).results || [];
   const fee = Number(await getSetting(env, 'fee_cents')) || 0;
+  const day = (await getSetting(env, 'day')) || '';
   return {
     currency: env.CURRENCY || 'XCG',
     fee: xcg(fee),
+    day,                       // cooking day "YYYY-MM-DD"; every order is for this day. '' = any day
+    today: curacaoToday(),
     items: rows.map((r) => ({
       id: r.id, name: r.name, price: xcg(r.price_cents), cat: r.cat,
       emoji: r.emoji || '', img: r.img || '', off: !!r.off,
@@ -134,6 +139,10 @@ async function placeOrder(request, env, ctx) {
 
   // Prices come from the menu here, never from the browser.
   const menu = await readMenu(env);
+  if (menu.day) {
+    if (menu.day < menu.today) return bad('Ordering for this menu is closed. The next menu is coming soon.', 409);
+    if (!when || when.slice(0, 10) !== menu.day) return bad('Please pick a time on the cooking day.', 409);
+  }
   const byId = Object.fromEntries(menu.items.map((m) => [m.id, m]));
   const lines = [];
   let sub = 0;
@@ -222,6 +231,11 @@ async function putMenu(request, env) {
   clean.forEach((m, i) => stmts.push(env.DB.prepare(
     'INSERT INTO menu (id, name, price_cents, cat, emoji, img, off, position) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
   ).bind(m.id, m.name, m.price_cents, m.cat, m.emoji, m.img, m.off, i)));
+  if (b.day !== undefined) {
+    const day = String(b.day || '');
+    if (day && !/^\d{4}-\d{2}-\d{2}$/.test(day)) return bad('Cooking day is not a date.');
+    stmts.push(env.DB.prepare("INSERT INTO settings (key, value) VALUES ('day', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").bind(day));
+  }
   if (b.fee != null && Number(b.fee) >= 0) {
     stmts.push(env.DB.prepare("INSERT INTO settings (key, value) VALUES ('fee_cents', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
       .bind(String(cents(b.fee))));
@@ -277,7 +291,7 @@ async function route(request, env, ctx) {
       return json({ ok: true });
     }
     if (p === '/api/admin/push/test' && m === 'POST') {
-      return json(await notifyAll(env, { title: "Tish's Kitchen", body: 'Notifications are working ✓', tag: 'test', url: '/' }));
+      return json(await notifyAll(env, { title: "TutiKuti", body: 'Notifications are working ✓', tag: 'test', url: '/' }));
     }
   }
   return bad('Not found.', 404);

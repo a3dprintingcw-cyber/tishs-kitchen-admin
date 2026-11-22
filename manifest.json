@@ -1,7 +1,7 @@
 {
-  "name": "Tish's Kitchen",
-  "short_name": "Tish Admin",
-  "description": "Order counter and daily sales register for Tish's Kitchen.",
+  "name": "TutiKuti",
+  "short_name": "TutiKuti Admin",
+  "description": "Order counter and daily sales register for TutiKuti.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

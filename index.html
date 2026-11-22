@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Tish's Kitchen</title>
-<meta name="description" content="Order taking, payments and daily takings for Tish's Kitchen.">
+<title>TutiKuti</title>
+<meta name="description" content="Order taking, payments and daily takings for TutiKuti.">
 <meta name="theme-color" content="#f5a7bf">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="apple-mobile-web-app-title" content="Tish's Kitchen">
+<meta name="apple-mobile-web-app-title" content="TutiKuti">
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="icon" href="icon-192.png">
@@ -267,7 +267,7 @@
 <header>
   <img src="icon-192.png" alt="">
   <div class="hd">
-    <h1>Tish's Kitchen</h1>
+    <h1>TutiKuti</h1>
     <p class="date" id="todayLbl"></p>
   </div>
   <span class="pill" id="hdrTotal">XCG 0</span>
@@ -789,7 +789,7 @@ function orderHTML(o){
   + '</div>';
 }
 function receiptText(o){
-  var l = ["Tish's Kitchen", niceDate(dkeyOf(o.ts)) + " " + clock(o.ts), ""];
+  var l = ["TutiKuti", niceDate(dkeyOf(o.ts)) + " " + clock(o.ts), ""];
   o.items.forEach(function(x){ l.push(x.qty+" x "+x.name+"   "+cur(x.price*x.qty)); });
   if (o.fee) l.push("Delivery   "+cur(o.fee));
   if (o.discount) l.push("Discount   -"+cur(o.discount));
@@ -1082,7 +1082,7 @@ function shareSummary(){
   var spent = sum(cst, function(c){ return c.amount; });
   var counts = {};
   list.forEach(function(o){ o.items.forEach(function(l){ counts[l.name] = (counts[l.name]||0) + l.qty; }); });
-  var l = ["Tish's Kitchen", periodLabel() === "Today" ? niceDate(dkey()) : periodLabel(), ""];
+  var l = ["TutiKuti", periodLabel() === "Today" ? niceDate(dkey()) : periodLabel(), ""];
   Object.keys(counts).sort(function(a,b){ return counts[b]-counts[a]; })
     .forEach(function(n){ l.push(counts[n]+" x "+n); });
   l.push("");
@@ -1216,8 +1216,8 @@ function openCustomer(key){
   var favName = Object.keys(fav).sort(function(a,b){ return fav[b]-fav[a]; })[0];
 
   var wa = waLink(c.phone, c.owed
-    ? "Hi "+(c.name||"")+", just a friendly reminder about your order at Tish's Kitchen. Outstanding: "+cur(c.owed)+". Thank you!"
-    : "Hi "+(c.name||"")+"! Thank you for ordering from Tish's Kitchen.");
+    ? "Hi "+(c.name||"")+", just a friendly reminder about your order at TutiKuti. Outstanding: "+cur(c.owed)+". Thank you!"
+    : "Hi "+(c.name||"")+"! Thank you for ordering from TutiKuti.");
 
   var h = '<div class="stats">'
     + '<div class="stat"><div class="k">Orders</div><div class="v">'+c.orders+'</div></div>'
@@ -1238,7 +1238,8 @@ function openCustomer(key){
    MORE / SETTINGS
    ===================================================================== */
 function renderMore(){
-  var h = '<h2 class="sec">Menu</h2><div class="card">'
+  var h = weekSection()
+    + '<h2 class="sec">Menu</h2><div class="card">'
     + db.menu.map(function(m){
         return '<button class="row" onclick="editItem(\''+esc(m.id)+'\')">'
           + '<div class="q">'+(m.emoji||"•")+'</div>'
@@ -1273,7 +1274,7 @@ function renderMore(){
 
     + '<h2 class="sec">Danger</h2>'
     + '<button class="btn danger" onclick="wipe()">Erase everything</button>'
-    + '<p class="note">Tish\'s Kitchen &middot; tishxkitchen.com</p>';
+    + '<p class="note">TutiKuti &middot; tishxkitchen.com</p>';
   document.getElementById("p-more").innerHTML = h;
 }
 
@@ -1370,7 +1371,7 @@ function restore(input){
       if (!db.costs) db.costs = [];
       if (!db.menu || !db.menu.length) db.menu = DEFAULT_MENU.slice();
       save(); renderAll(); toast("Backup restored");
-    }catch(e){ toast("That file is not a Tish's Kitchen backup"); }
+    }catch(e){ toast("That file is not a TutiKuti backup"); }
   };
   r.readAsText(f);
   input.value = "";
@@ -1501,7 +1502,7 @@ function whenLabel(w){
   return day + (p[1] ? " " + p[1] : "");
 }
 function confirmText(o){
-  var l = ["Hi " + (o.cust.name || "") + ", thank you for your order " + (o.web ? o.web.ref : "") + " at Tish's Kitchen! \ud83d\udc96", ""];
+  var l = ["Hi " + (o.cust.name || "") + ", thank you for your order " + (o.web ? o.web.ref : "") + " at TutiKuti! \ud83d\udc96", ""];
   o.items.forEach(function(x){ l.push(x.qty+" x "+x.name); });
   l.push("", "Total: "+cur(o.total));
   l.push((o.type==="delivery" ? "Delivery" : "Pickup") + ": " + (o.web && o.web.when ? whenLabel(o.web.when) : "as soon as possible"));
@@ -1567,10 +1568,49 @@ function pushMenu(){
   if (!apiKey()) return;
   clearTimeout(menuTimer);
   menuTimer = setTimeout(function(){
-    api("/admin/menu", { method:"PUT", body:{ items: db.menu, fee: db.settings.fee } })
-      .then(function(){ net.ok = true; })
+    api("/admin/menu", { method:"PUT", body:{ items: db.menu, fee: db.settings.fee, day: db.settings.day || "" } })
+      .then(function(){ net.ok = true; if (db.settings.weekPending){ delete db.settings.weekPending; save(); } })
       .catch(function(){ toast("Website menu not updated, no internet?"); });
   }, 600);
+}
+
+/* ---------- this week's menu ----------
+   Tish cooks one menu on one day. The website only sells what is switched
+   on here, and every online order is for the cooking day. */
+function weekSection(){
+  var day = db.settings.day || "";
+  var past = day && day < dkey();
+  var on = db.menu.filter(function(m){ return !m.off; }).length;
+  return '<h2 class="sec">This week\'s menu</h2>'
+    + '<div class="card"><div class="row"><div class="nm">Cooking day<small>'
+    + (!day ? "Not set: customers can pick any day"
+       : past ? "This day has passed. The website is closed until you pick a new day."
+       : "Customers order for " + niceDate(day)) + '</small></div>'
+    + '<div style="width:150px"><input type="date" value="'+esc(day)+'" onchange="setDay(this.value)"></div></div>'
+    + db.menu.map(function(m){
+        return '<div class="row"><div class="q">'+(m.emoji||"•")+'</div>'
+          + '<div class="nm">'+esc(m.name)+'<small>'+cur(m.price)+'</small></div>'
+          + '<div class="seg" style="width:150px">'
+          + '<button aria-pressed="'+(!m.off)+'" onclick="setOnMenu(\''+esc(m.id)+'\',true)">On</button>'
+          + '<button aria-pressed="'+(!!m.off)+'" onclick="setOnMenu(\''+esc(m.id)+'\',false)">Off</button>'
+          + '</div></div>';
+      }).join("")
+    + '</div>'
+    + '<p class="note">'+on+' on the menu. Changes show on tishxkitchen.com within a minute.</p>';
+}
+function setDay(v){ db.settings.day = v || ""; save(); renderAll(); pushMenu(); toast(v ? "Cooking day saved" : "Cooking day cleared"); }
+function setOnMenu(id, yes){ var m = menuItem(id); if (!m) return; m.off = !yes; save(); renderAll(); pushMenu(); }
+
+/* One time: set up the first weekly menu (Saturday 28 November 2026, Pasta Porkchop). */
+function presetFirstWeek(){
+  if (db.settings.weekPreset) return;
+  db.settings.weekPreset = 1;
+  if (dkey() <= "2026-11-28"){
+    db.settings.day = "2026-11-28";
+    db.menu.forEach(function(m){ m.off = m.id !== "pasta-porkchop"; });
+    db.settings.weekPending = 1;
+  }
+  save();
 }
 
 /* ---------- notifications ---------- */
@@ -1640,7 +1680,7 @@ function onlineSection(){
 function startOnline(){
   if (!apiKey() || net.started) return Promise.resolve(0);
   net.started = true;
-  var first = syncOrders(true).then(function(n){ openFromLink(); return n; });
+  var first = syncOrders(true).then(function(n){ openFromLink(); if (db.settings.weekPending && net.ok) pushMenu(); return n; });
   setInterval(function(){ if (!document.hidden) syncOrders(true); }, 30000);
   document.addEventListener("visibilitychange", function(){ if (!document.hidden) syncOrders(true); });
   window.addEventListener("online", function(){ syncOrders(true); });
@@ -1666,6 +1706,7 @@ function openFromLink(){
    START
    ===================================================================== */
 load();
+presetFirstWeek();
 takeKeyFromLink();
 go("sell");
 bridgeFromOldAddress();

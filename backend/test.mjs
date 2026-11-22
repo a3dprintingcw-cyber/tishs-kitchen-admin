@@ -195,6 +195,24 @@ await t('menu from Tish\'s app becomes the public menu, sold out is refused', as
   assert.equal(no.status, 409);
 });
 
+await t('weekly menu: orders only for the cooking day, closed after it', async () => {
+  const items = [{ id: 'pasta-porkchop', name: 'Pasta Porkchop + Drink', price: 35, cat: 'Meals' }];
+  await admin('/api/admin/menu', { method: 'PUT', body: JSON.stringify({ items, fee: 10, day: '2099-01-03' }) });
+  const pub = await (await call('/api/menu')).json();
+  assert.equal(pub.day, '2099-01-03');
+  let r = await post('/api/orders', order({ items: [{ id: 'pasta-porkchop', qty: 1 }], when: null }), { 'cf-connecting-ip': '9.9.9.1' });
+  assert.equal(r.status, 409);
+  r = await post('/api/orders', order({ items: [{ id: 'pasta-porkchop', qty: 1 }], when: '2099-01-04T12:00' }), { 'cf-connecting-ip': '9.9.9.1' });
+  assert.equal(r.status, 409);
+  r = await post('/api/orders', order({ items: [{ id: 'pasta-porkchop', qty: 1 }], when: '2099-01-03T12:30' }), { 'cf-connecting-ip': '9.9.9.1' });
+  assert.equal(r.status, 201);
+  await admin('/api/admin/menu', { method: 'PUT', body: JSON.stringify({ items, day: '2000-01-01' }) });
+  r = await post('/api/orders', order({ items: [{ id: 'pasta-porkchop', qty: 1 }], when: '2000-01-01T12:30' }), { 'cf-connecting-ip': '9.9.9.1' });
+  assert.equal(r.status, 409);
+  assert.match((await r.json()).error, /closed/);
+  await admin('/api/admin/menu', { method: 'PUT', body: JSON.stringify({ items, day: '' }) });
+});
+
 await t('a dead phone subscription is removed', async () => {
   pushStatus = 410;
   const r = await (await admin('/api/admin/push/test', { method: 'POST' })).json();
@@ -206,7 +224,7 @@ await t('a dead phone subscription is removed', async () => {
 
 await t('too many orders from one phone in 10 minutes is slowed down', async () => {
   let last;
-  for (let i = 0; i < 4; i++) last = await post('/api/orders', order({ items: [{ id: 'pasta-chicken', qty: 1 }] }));
+  for (let i = 0; i < 4; i++) last = await post('/api/orders', order({ items: [{ id: 'pasta-porkchop', qty: 1 }] }));
   assert.equal(last.status, 429);
 });
 

@@ -1,4 +1,4 @@
-// Tish's Kitchen admin: notifications only. No caching, so the app is
+// TutiKuti admin: notifications only. No caching, so the app is
 // always the latest version from GitHub Pages.
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
@@ -6,7 +6,7 @@ self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
 self.addEventListener('push', (e) => {
   let d = {};
   try { d = e.data ? e.data.json() : {}; } catch (_) { d = { body: e.data && e.data.text() }; }
-  e.waitUntil(self.registration.showNotification(d.title || "Tish's Kitchen", {
+  e.waitUntil(self.registration.showNotification(d.title || "TutiKuti", {
     body: d.body || 'New online order',
     tag: d.tag || 'order',
     renotify: true,
