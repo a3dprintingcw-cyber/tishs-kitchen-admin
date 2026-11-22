@@ -65,8 +65,19 @@ jobs:
 
       - name: Check it answers
         run: |
-          for i in 1 2 3 4 5 6; do
-            curl -fsS https://api.tishxkitchen.com/api/health && exit 0
+          ok=0
+          for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+            if curl -fsS https://api.tishxkitchen.com/api/health; then ok=1; break; fi
             sleep 10
           done
-          echo "Deployed, but api.tishxkitchen.com is not answering yet (DNS can take a few minutes)"
+          [ $ok = 1 ] || { echo "api.tishxkitchen.com is not answering"; exit 1; }
+          echo
+          echo "menu:"; curl -fsS https://api.tishxkitchen.com/api/menu | head -c 300; echo
+          code=$(curl -s -o /dev/null -w '%{http_code}' https://api.tishxkitchen.com/api/admin/check)
+          echo "admin without key: $code"; [ "$code" = 401 ]
+          if [ -n "$TISH_ADMIN_KEY" ]; then
+            code=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $TISH_ADMIN_KEY" https://api.tishxkitchen.com/api/admin/check)
+            echo "admin with key: $code"
+          fi
+        env:
+          TISH_ADMIN_KEY: ${{ secrets.TISH_ADMIN_KEY }}
