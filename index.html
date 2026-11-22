@@ -172,10 +172,15 @@
   .tag.due{background:var(--bad-soft);color:var(--bad)}
   .tag.open{background:var(--warn-soft);color:var(--warn)}
   .tag.plain{background:var(--pink-wash);color:#a8566f}
+  .tag.web{background:#e8f0ff;color:#2f5bb7}
+  .netbanner{margin:0 0 12px;padding:12px 14px;border-radius:16px;background:#e8f0ff;color:#2f5bb7;font-weight:700;font-size:14px;display:flex;gap:10px;align-items:center;justify-content:space-between}
+  .netbanner button{border:0;background:#2f5bb7;color:#fff;font:inherit;font-size:13px;padding:8px 12px;border-radius:999px}
 
   .btn{padding:14px;border-radius:15px;font-size:14px;font-weight:800;text-align:center;
     background:#fff;border:1px solid var(--line);box-shadow:var(--shadow);display:block;width:100%}
   .btn.primary{background:var(--pink);color:#fff;border-color:var(--pink)}
+  a.btn{display:block;text-decoration:none;color:inherit}
+  a.btn.primary{color:#fff}
   .btn.ghost{background:transparent;box-shadow:none;border-color:var(--line)}
   .btn.danger{color:var(--bad);border-color:#f3d3d8}
   .btn:disabled{opacity:.45}
@@ -300,7 +305,8 @@
 <script>
 /* =====================================================================
    TISH'S KITCHEN
-   Everything is stored in this phone's browser. Nothing is sent anywhere.
+   Everything is stored in this phone's browser. Online orders from
+   tishxkitchen.com come in from api.tishxkitchen.com (see ONLINE below).
    ===================================================================== */
 
 var KEY = "tishskitchen.v2";
@@ -491,8 +497,11 @@ function renderSell(){
     byCat[m.cat].push(m);
   });
   var h = "";
+  var waiting = db.orders.filter(function(o){ return o.web && !o.done; }).length;
+  if (waiting) h += '<div class="netbanner"><span>\ud83d\udd14 '+waiting+' online order'+(waiting>1?'s':'')+' to make</span>'
+    + '<button onclick="orderFilter=\'web\';go(\'orders\')">View</button></div>';
   if (!db.menu.length){
-    h = '<div class="card"><div class="empty">No items on the menu yet.<br>'
+    h += '<div class="card"><div class="empty">No items on the menu yet.<br>'
       + 'Go to <b>More</b> and add your first one.</div></div>';
   }
   cats.forEach(function(c){
@@ -674,12 +683,14 @@ function renderOrders(){
   if (orderFilter === "unpaid")   shown = unpaid;
   if (orderFilter === "open")     shown = open;
   if (orderFilter === "delivery") shown = list.filter(function(o){ return o.type==="delivery"; });
+  if (orderFilter === "web")      shown = list.filter(function(o){ return !!o.web; });
 
   var h = '<div class="chips">'
     + chip("all","All ("+list.length+")")
     + chip("open","To make ("+open.length+")")
     + chip("unpaid","Owed ("+unpaid.length+")")
     + chip("delivery","Delivery")
+    + chip("web","Online")
     + '</div>';
 
   if (!shown.length){
@@ -702,7 +713,8 @@ function orderRow(o){
   if (!o.paid) tags += '<span class="tag due">Owes '+money(o.total)+'</span> ';
   else tags += '<span class="tag paid">'+(o.method==="card"?"Card":"Cash")+'</span> ';
   if (!o.done) tags += '<span class="tag open">To make</span> ';
-  if (o.type === "delivery") tags += '<span class="tag plain">Delivery</span>';
+  if (o.type === "delivery") tags += '<span class="tag plain">Delivery</span> ';
+  if (o.web) tags += '<span class="tag web">Online'+(o.web.when ? ' · for '+esc(whenLabel(o.web.when)) : '')+'</span>';
   return '<button class="row" onclick="openOrder(\''+o.id+'\')">'
     + '<div class="q">'+clock(o.ts).replace(":","​:")+'</div>'
     + '<div class="nm">'+esc(who)+'<small>'+esc(what)+'</small>'
@@ -742,6 +754,10 @@ function orderHTML(o){
   +     '</small></div></div>'
   +   '<div class="row"><div class="nm">Type<small>'
   +     (o.type==="delivery"?"Delivery":"Pickup") + '</small></div></div>'
+  +   (o.web ? '<div class="row"><div class="nm">Online order '+esc(o.web.ref)+'<small>'
+        + (o.web.when ? 'Wanted ' + esc(whenLabel(o.web.when)) : 'As soon as possible')
+        + ' &middot; ' + (o.web.pay==="online" ? 'pays online (Sentoo)' : 'pays cash') + '</small></div>'
+        + '<span class="tag web">Online</span></div>' : '')
   +   (o.cust.addr ? '<div class="row"><div class="nm">Address<small>'
         + esc(o.cust.addr) + '</small></div>'
         + '<a class="tag plain" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query='
@@ -759,9 +775,11 @@ function orderHTML(o){
        + '<button class="btn ghost" onclick="unpay(\''+o.id+'\')">Mark as not paid</button>'
      : '<div class="fgroup"><label class="fl">Take payment now</label><div class="seg pay">'
        + '<button onclick="payOrder(\''+o.id+'\',\'cash\')">Paid cash</button>'
-       + '<button onclick="payOrder(\''+o.id+'\',\'card\')">Paid card</button>'
+       + '<button onclick="payOrder(\''+o.id+'\',\'card\')">'+(o.web && o.web.pay==="online" ? "Paid online" : "Paid card")+'</button>'
        + '</div></div>')
 
+  + (o.web && waLink(o.cust.phone, "x")
+     ? '<a class="btn primary" style="margin-bottom:10px" href="'+waLink(o.cust.phone, confirmText(o))+'" target="_blank" rel="noopener">Confirm order on WhatsApp</a>' : '')
   + '<div class="actions">'
   +   '<button class="btn" onclick="toggleDone(\''+o.id+'\')">'
   +     (o.done ? "Move back to make" : "Mark as made") + '</button>'
@@ -1233,12 +1251,13 @@ function renderMore(){
     + '<h2 class="sec">Settings</h2><div class="card">'
     + '<div class="row"><div class="nm">Delivery fee</div>'
     +   '<div style="width:110px"><input type="number" inputmode="decimal" value="'+esc(db.settings.fee)+'" '
-    +   'onchange="db.settings.fee=+this.value||0;save();toast(\'Delivery fee saved\')"></div></div>'
+    +   'onchange="db.settings.fee=+this.value||0;save();toast(\'Delivery fee saved\');pushMenu()"></div></div>'
     + '<div class="row"><div class="nm">Phone country code<small>Used for WhatsApp links</small></div>'
     +   '<div style="width:110px"><input value="'+esc(db.settings.cc)+'" '
     +   'onchange="db.settings.cc=this.value.replace(/\\D/g,\'\')||\'599\';save();toast(\'Saved\')"></div></div>'
     + '</div>'
 
+    + onlineSection()
     + '<h2 class="sec">Keep your data safe</h2>'
     + '<div class="card"><div class="row"><div class="nm">Last backup'
     + '<small>'+(db.settings.backedUp ? shortDate(dkeyOf(db.settings.backedUp)) : "never")+'</small></div>'
@@ -1249,7 +1268,7 @@ function renderMore(){
     +   '<button class="btn" onclick="document.getElementById(\'restoreFile\').click()">Restore</button>'
     +   '<input type="file" id="restoreFile" accept="application/json,.json" style="display:none" onchange="restore(this)">'
     + '</div>'
-    + '<p class="note">Everything lives on this phone only. Nothing is sent anywhere. '
+    + '<p class="note">Your orders and money live on this phone only. Online orders arrive from the website. '
     + 'A backup is one small file. Keep it in WhatsApp, email or Drive.</p>'
 
     + '<h2 class="sec">Danger</h2>'
@@ -1314,14 +1333,14 @@ function saveItem(id){
     data.id = slug;
     db.menu.push(data);
   }
-  save(); closeSheet(); renderAll(); toast("Menu updated");
+  save(); closeSheet(); renderAll(); toast("Menu updated"); pushMenu();
 }
 function removeItem(id){
   var m = menuItem(id); if (!m) return;
   if (!confirm("Remove " + m.name + " from the menu?")) return;
   db.menu = db.menu.filter(function(x){ return x.id !== id; });
   cart = cart.filter(function(l){ return l.id !== id; });
-  save(); closeSheet(); renderAll(); toast("Removed");
+  save(); closeSheet(); renderAll(); toast("Removed"); pushMenu();
 }
 
 /* ---------- backup ---------- */
@@ -1425,12 +1444,206 @@ function renderAll(){
   renderCartBar();
 }
 
+
+/* =====================================================================
+   ONLINE
+   Orders placed on tishxkitchen.com are saved by api.tishxkitchen.com.
+   This phone asks for new ones every 30 seconds while the app is open,
+   and gets a notification when it is closed. The key that lets this
+   phone in arrives once with a setup link: admin.tishxkitchen.com/#key=...
+   ===================================================================== */
+var API = "https://api.tishxkitchen.com/api";
+var APIKEY_KEY = "tishskitchen.apikey";
+var net = { ok:null, newCount:0, busy:false, devices:0 };
+
+function apiKey(){ try{ return localStorage.getItem(APIKEY_KEY) || ""; }catch(e){ return ""; } }
+function takeKeyFromLink(){
+  var m = /[#&]key=([\w-]{24,})/.exec(location.hash || "");
+  if (!m) return;
+  try{ localStorage.setItem(APIKEY_KEY, m[1]); }catch(e){}
+  history.replaceState(null, "", location.pathname + location.search);
+  setTimeout(function(){ toast("Online orders connected \u2713"); pushMenu(); }, 400);
+}
+function api(path, opt){
+  opt = opt || {};
+  var h = { "Authorization": "Bearer " + apiKey() };
+  if (opt.body) h["Content-Type"] = "application/json";
+  return fetch(API + path, { method: opt.method || "GET", headers: h, body: opt.body ? JSON.stringify(opt.body) : undefined })
+    .then(function(r){
+      if (r.status === 401) { net.ok = false; throw new Error("key"); }
+      if (!r.ok) throw new Error("http " + r.status);
+      return r.json();
+    });
+}
+
+function whenLabel(w){
+  if (!w) return "";
+  var p = w.split("T"), d = p[0].split("-");
+  var date = new Date(+d[0], +d[1]-1, +d[2]);
+  var today = dkey(), tmr = dkey(new Date(Date.now()+86400000));
+  var day = p[0]===today ? "today" : p[0]===tmr ? "tomorrow"
+    : date.toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short"});
+  return day + (p[1] ? " " + p[1] : "");
+}
+function confirmText(o){
+  var l = ["Hi " + (o.cust.name || "") + ", thank you for your order " + (o.web ? o.web.ref : "") + " at Tish's Kitchen! \ud83d\udc96", ""];
+  o.items.forEach(function(x){ l.push(x.qty+" x "+x.name); });
+  l.push("", "Total: "+cur(o.total));
+  l.push((o.type==="delivery" ? "Delivery" : "Pickup") + ": " + (o.web && o.web.when ? whenLabel(o.web.when) : "as soon as possible"));
+  if (o.web && o.web.pay==="online") l.push("I will send you the payment link.");
+  else l.push("Payment in cash when you get your food.");
+  return l.join("\n");
+}
+
+function syncOrders(quiet){
+  if (!apiKey() || net.busy || !navigator.onLine) return Promise.resolve(0);
+  net.busy = true;
+  var after = db.settings.webAfter || 0;
+  return api("/admin/orders?after=" + after).then(function(j){
+    net.ok = true;
+    var added = [], ids = [];
+    (j.orders || []).forEach(function(w){
+      ids.push(w.id);
+      var id = "web-" + w.ref;
+      if (findOrder(id)) return;
+      var o = {
+        id: id, ts: w.ts,
+        items: w.items, fee: w.fee || 0, discount: 0, total: w.total,
+        cust: { name: w.cust.name, phone: w.cust.phone, addr: w.cust.addr || "" },
+        type: w.type, paid: false, method: null, received: null,
+        note: w.note || "", done: false,
+        web: { ref: w.ref, when: w.when, pay: w.pay }
+      };
+      db.orders.push(o); added.push(o);
+    });
+    if (j.last != null) db.settings.webAfter = Math.max(after, j.last);
+    save();
+    if (ids.length) api("/admin/orders/received", { method:"POST", body:{ ids: ids } }).catch(function(){});
+    if (added.length){
+      net.newCount += added.length;
+      renderAll();
+      buzz([200,100,200]); ding();
+      toast(added.length === 1 ? "New online order " + added[0].web.ref : added.length + " new online orders");
+    } else if (!quiet) renderAll();
+    return added.length;
+  }).catch(function(e){ if (e.message !== "key") net.ok = false; return 0; })
+    .then(function(n){ net.busy = false; return n; });
+}
+
+function ding(){
+  try{
+    var C = window.AudioContext || window.webkitAudioContext; if (!C) return;
+    var c = new C(), t = c.currentTime;
+    [880, 1320].forEach(function(f, i){
+      var o = c.createOscillator(), g = c.createGain();
+      o.frequency.value = f; o.connect(g); g.connect(c.destination);
+      g.gain.setValueAtTime(0.0001, t + i*0.18);
+      g.gain.exponentialRampToValueAtTime(0.3, t + i*0.18 + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + i*0.18 + 0.3);
+      o.start(t + i*0.18); o.stop(t + i*0.18 + 0.32);
+    });
+  }catch(e){}
+}
+
+/* Her menu, prices, sold out and delivery fee become the website's. */
+var menuTimer;
+function pushMenu(){
+  if (!apiKey()) return;
+  clearTimeout(menuTimer);
+  menuTimer = setTimeout(function(){
+    api("/admin/menu", { method:"PUT", body:{ items: db.menu, fee: db.settings.fee } })
+      .then(function(){ net.ok = true; })
+      .catch(function(){ toast("Website menu not updated, no internet?"); });
+  }, 600);
+}
+
+/* ---------- notifications ---------- */
+function pushSupported(){ return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window; }
+function b64ToBytes(s){
+  s = s.replace(/-/g,"+").replace(/_/g,"/"); while (s.length % 4) s += "=";
+  var b = atob(s), a = new Uint8Array(b.length); for (var i=0;i<b.length;i++) a[i]=b.charCodeAt(i); return a;
+}
+function turnOnAlerts(){
+  if (!pushSupported()){
+    toast(/iPhone|iPad/.test(navigator.userAgent) ? "On iPhone: Share, Add to Home Screen, then open it from there" : "This browser cannot show notifications");
+    return;
+  }
+  Notification.requestPermission().then(function(p){
+    if (p !== "granted"){ toast("Notifications were not allowed"); return; }
+    return navigator.serviceWorker.register("sw.js").then(function(){ return navigator.serviceWorker.ready; })
+      .then(function(reg){
+        return api("/admin/push/key").then(function(k){
+          return reg.pushManager.getSubscription().then(function(old){
+            return old || reg.pushManager.subscribe({ userVisibleOnly:true, applicationServerKey: b64ToBytes(k.publicKey) });
+          });
+        });
+      })
+      .then(function(sub){
+        return api("/admin/push/subscribe", { method:"POST", body:{ sub: sub.toJSON(), label: navigator.userAgent.slice(0,60) } });
+      })
+      .then(function(r){ net.devices = r.devices; localStorage.setItem("tishskitchen.alerts","1"); toast("Notifications on \u2713"); renderAll(); });
+  }).catch(function(){ toast("Could not turn on notifications"); });
+}
+function testAlert(){
+  api("/admin/push/test", { method:"POST" })
+    .then(function(r){ toast(r.sent ? "Test sent, check your notifications" : "No phone is set up for notifications yet"); })
+    .catch(function(){ toast("No internet?"); });
+}
+
+function onlineSection(){
+  var on = !!apiKey();
+  var alerts = false; try{ alerts = localStorage.getItem("tishskitchen.alerts")==="1" && Notification.permission==="granted"; }catch(e){}
+  var webCount = db.orders.filter(function(o){ return !!o.web; }).length;
+  var h = '<h2 class="sec">Online orders</h2><div class="card">'
+    + '<div class="row"><div class="nm">Website orders<small>'
+    + (!on ? "Not connected. Open the setup link from Adrian on this phone."
+        : net.ok === false ? "Cannot reach the order system right now"
+        : "Connected &middot; " + webCount + " online orders so far") + '</small></div>'
+    + (on && net.ok !== false ? '<span class="tag paid">On</span>' : '<span class="tag due">Off</span>') + '</div>'
+    + (on ? '<div class="row"><div class="nm">Notifications<small>'
+        + (alerts ? "This phone buzzes for every new order" : "Get a buzz when an order comes in, even with the app closed")
+        + '</small></div>' + (alerts ? '<span class="tag paid">On</span>' : '') + '</div>' : '')
+    + '</div>';
+  if (on){
+    h += '<div class="actions">'
+      + (alerts ? '<button class="btn" onclick="testAlert()">Send a test</button>'
+                : '<button class="btn primary" onclick="turnOnAlerts()">Turn on notifications</button>')
+      + '<button class="btn" onclick="syncOrders().then(function(n){ toast(n ? n+\' new\' : \'No new orders\'); })">Check now</button>'
+      + '</div>';
+  }
+  return h;
+}
+
+function startOnline(){
+  if (!apiKey()) return;
+  syncOrders(true).then(openFromLink);
+  setInterval(function(){ if (!document.hidden) syncOrders(true); }, 30000);
+  document.addEventListener("visibilitychange", function(){ if (!document.hidden) syncOrders(true); });
+  window.addEventListener("online", function(){ syncOrders(true); });
+  if ("serviceWorker" in navigator){
+    navigator.serviceWorker.addEventListener("message", function(e){
+      if (e.data && e.data.tkOrder) syncOrders(true).then(function(){ openWebOrder(e.data.tkOrder); });
+    });
+  }
+}
+function openWebOrder(ref){
+  if (!ref) return;
+  var o = findOrder("web-" + ref);
+  if (o){ go("orders"); openOrder(o.id); }
+}
+function openFromLink(){
+  var m = /[?&]order=(TK-[A-Z0-9]{4})/.exec(location.search);
+  if (m){ history.replaceState(null, "", location.pathname); openWebOrder(m[1]); }
+}
+
 /* =====================================================================
    START
    ===================================================================== */
 load();
+takeKeyFromLink();
 go("sell");
 bridgeFromOldAddress();
+startOnline();
 
 /* The app used to live on tishxkitchen.com. Browsers keep saved data per
    address, so on first open here we ask the old address for its data

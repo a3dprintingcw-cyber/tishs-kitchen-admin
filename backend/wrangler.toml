@@ -1,0 +1,38 @@
+# Tish's Kitchen API
+#
+#   api.tishxkitchen.com/api/*   orders from tishxkitchen.com, menu, Tish's app
+#
+# Both websites stay on GitHub Pages. The Worker has its own subdomain, the
+# same way the A3D back office lives on app.a3dprinting.com.
+#
+# Deployed by .github/workflows/deploy-api.yml on every push to main that
+# touches backend/. The workflow creates the D1 database the first time and
+# fills in its id below, so this file never needs editing by hand.
+
+name = "tishs-kitchen-api"
+main = "src/index.js"
+compatibility_date = "2026-08-01"
+workers_dev = false
+account_id = "c169592ab9e6b197cfe88e7cd8836986"
+
+[observability]
+enabled = true
+
+routes = [
+  { pattern = "api.tishxkitchen.com", custom_domain = true },
+]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "tishs-kitchen"
+database_id = "__D1_ID__"
+
+[vars]
+CURRENCY = "XCG"
+ALLOWED_ORIGINS = "https://tishxkitchen.com,https://www.tishxkitchen.com,https://admin.tishxkitchen.com"
+MAX_ORDERS_PER_10MIN = "8"
+PUSH_CONTACT = "a3dprinting.cw@gmail.com"
+
+# Secret, never in this file:
+#   ADMIN_KEY   long random key Tish's app uses. Set by the workflow from the
+#               GitHub secret TISH_ADMIN_KEY.
