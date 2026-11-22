@@ -1484,11 +1484,18 @@ function api(path, opt){
   opt = opt || {};
   var h = { "Authorization": "Bearer " + apiKey() };
   if (opt.body) h["Content-Type"] = "application/json";
-  return fetch(API + path, { method: opt.method || "GET", headers: h, body: opt.body ? JSON.stringify(opt.body) : undefined })
+  var ctl = window.AbortController ? new AbortController() : null;
+  var timer = ctl ? setTimeout(function(){ ctl.abort(); }, 12000) : null;
+  return fetch(API + path, { method: opt.method || "GET", headers: h, body: opt.body ? JSON.stringify(opt.body) : undefined,
+                             cache: "no-store", signal: ctl ? ctl.signal : undefined })
     .then(function(r){
+      clearTimeout(timer);
       if (r.status === 401) { net.ok = false; net.err = "key"; throw new Error("key"); }
-      if (!r.ok) throw new Error("http " + r.status);
+      if (!r.ok) throw new Error("server answered " + r.status);
       return r.json();
+    }, function(e){
+      clearTimeout(timer);
+      throw new Error(e && e.name === "AbortError" ? "no answer after 12 seconds" : ("blocked or offline: " + ((e && e.message) || e)));
     });
 }
 
@@ -1512,11 +1519,13 @@ function confirmText(o){
 }
 
 function syncOrders(quiet){
-  if (!apiKey() || net.busy || !navigator.onLine) return Promise.resolve(0);
+  if (!apiKey()) return Promise.resolve(0);
+  if (!navigator.onLine){ net.ok = false; net.err = "net"; net.why = "this device says it is offline"; if (tab === "more") renderAll(); return Promise.resolve(0); }
+  if (net.busy) return Promise.resolve(0);
   net.busy = true;
   var after = db.settings.webAfter || 0;
   return api("/admin/orders?after=" + after).then(function(j){
-    var was = net.ok; net.ok = true; net.err = "";
+    var was = net.ok; net.ok = true; net.err = ""; net.why = "";
     if (was !== true && tab === "more") renderAll();
     var added = [], ids = [];
     (j.orders || []).forEach(function(w){
@@ -1543,7 +1552,7 @@ function syncOrders(quiet){
       toast(added.length === 1 ? "New online order " + added[0].web.ref : added.length + " new online orders");
     } else if (!quiet) renderAll();
     return added.length;
-  }).catch(function(e){ if (e.message !== "key"){ net.ok = false; net.err = "net"; } if (tab === "more") renderAll(); return 0; })
+  }).catch(function(e){ if (e.message !== "key"){ net.ok = false; net.err = "net"; net.why = e.message; } if (tab === "more") renderAll(); return 0; })
     .then(function(n){ net.busy = false; return n; });
 }
 
@@ -1653,7 +1662,7 @@ function onlineSection(){
   var status, tag;
   if (!on){ status = "Not connected yet. Paste the setup link from Adrian below."; tag = '<span class="tag due">Off</span>'; }
   else if (net.err === "key"){ status = "The setup code was not accepted. Paste the setup link again."; tag = '<span class="tag due">Off</span>'; }
-  else if (net.err === "net"){ status = "Cannot reach the order system. Check the internet, then tap Check now."; tag = '<span class="tag due">Off</span>'; }
+  else if (net.err === "net"){ status = "Cannot reach the order system (" + esc(net.why || "unknown") + "). Tap Check now."; tag = '<span class="tag due">Off</span>'; }
   else if (net.ok === null){ status = "Checking…"; tag = '<span class="tag plain">…</span>'; }
   else { status = "Connected &middot; " + webCount + " online orders so far"; tag = '<span class="tag paid">On</span>'; }
 
